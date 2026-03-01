@@ -2,32 +2,24 @@ import streamlit as st
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
+import json
 
 # --- DASHBOARD SETUP ---
-st.set_page_config(page_title="SBD Intelligence Dashboard", layout="wide")
+st.set_page_config(page_title="Intelligence Dashboard", layout="wide")
 
 def get_client():
-    # 1. Fetch the raw secrets
-    creds_raw = st.secrets["GOOGLE_CREDENTIALS"]
+    # 1. Access the secrets from Streamlit
+    creds_info = st.secrets["GOOGLE_CREDENTIALS"]
     
-    # 2. THE ULTIMATE FIX: Manually rebuild the key to fix line breaks
-    # This prevents the "PEM file" error by forcing the correct format.
-    raw_key = creds_raw["private_key"]
-    clean_key = raw_key.replace("\\n", "\n")
-    
-    # 3. Create a clean dictionary for Google
-    creds_dict = {
-        "type": creds_raw["type"],
-        "project_id": creds_raw["project_id"],
-        "private_key_id": creds_raw["private_key_id"],
-        "private_key": clean_key,
-        "client_email": creds_raw["client_email"],
-        "client_id": creds_raw["client_id"],
-        "auth_uri": creds_raw["auth_uri"],
-        "token_uri": creds_raw["token_uri"],
-        "auth_provider_x509_cert_url": creds_raw["auth_provider_x509_cert_url"],
-        "client_x509_cert_url": creds_raw["client_x509_cert_url"]
-    }
+    # 2. THE KEY FIX: This converts the text '\n' into actual line breaks.
+    # This prevents the "Unable to load PEM file" error.
+    if isinstance(creds_info, st.runtime.secrets.AttrDict):
+        creds_dict = dict(creds_info)
+    else:
+        creds_dict = creds_info
+
+    if "private_key" in creds_dict:
+        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
     
     scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
@@ -44,17 +36,21 @@ def get_sales_info(raw_value):
         except: return val_str, 0
     return raw_value, 0
 
-st.title("🚀 Shree Balaji Decor: Live Dashboard")
+st.title("🚀 Inventory Intelligence Dashboard")
 
 try:
     client = get_client()
+    # Your Google Sheet ID
     sheet = client.open_by_key("1Putj_rdvaHjokbSdT8ArjQbMDVnTDeHDNysj5avTOW4")
     
     # Categories Sidebar
     categories = ["0.72 MM", "0.8 MM", "0.92 MM", "1 MM", "Door Skin 7x3.25", "Door Skin 8x4", "Acrylic Sheet"]
     selected_cat = st.sidebar.selectbox("📂 Select Category", categories)
+    
+    # Demand Filter (Group by Sales Count)
     demand_filter = st.sidebar.slider("Show items sold exactly 'X' times:", 0, 20, 0)
     
+    # Load and process data
     ws = sheet.worksheet(selected_cat)
     df = pd.DataFrame(ws.get_all_records())
     
@@ -62,7 +58,7 @@ try:
     df['Current Stock'] = df['Processed'].apply(lambda x: x[0])
     df['Times Sold'] = df['Processed'].apply(lambda x: x[1])
 
-    # Search Logic for History
+    # Deep History Search
     search_query = st.text_input("🔍 Search Design for History (e.g., PT 100)")
     if search_query:
         st.subheader(f"📜 History for {search_query}")
@@ -71,11 +67,12 @@ try:
             h_data = pd.DataFrame(h_ws.get_all_records())
             item_h = h_data[h_data.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)]
             st.table(item_h)
-        except: st.info("Ensure an 'Edit History' tab exists in your Sheet.")
+        except: st.info("Ensure an 'Edit History' tab exists in your Google Sheet.")
 
+    # Main Inventory View
     st.subheader(f"📦 Inventory ({selected_cat})")
     final_df = df[df['Times Sold'] == demand_filter]
     st.dataframe(final_df[['Item', 'Current Stock', 'Times Sold']], use_container_width=True)
 
 except Exception as e:
-    st.error(f"Configuration in progress... Details: {e}")
+    st.error(f"Waiting for valid configuration. Error details: {e}")
