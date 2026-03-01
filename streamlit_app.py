@@ -7,12 +7,13 @@ from google.oauth2.service_account import Credentials
 st.set_page_config(page_title="SBD Intelligence Dashboard", layout="wide")
 
 def get_client():
-    # 1. Fetch the secrets from Streamlit
+    # 1. Fetch the raw secrets
     creds_raw = st.secrets["GOOGLE_CREDENTIALS"]
     
-    # 2. THE ULTIMATE FIX: This manually rebuilds the key to remove formatting errors
-    # It replaces the text '\n' with the actual line breaks the computer requires.
-    clean_key = creds_raw["private_key"].replace("\\n", "\n")
+    # 2. THE ULTIMATE FIX: Manually rebuild the key to fix line breaks
+    # This prevents the "PEM file" error by forcing the correct format.
+    raw_key = creds_raw["private_key"]
+    clean_key = raw_key.replace("\\n", "\n")
     
     # 3. Create a clean dictionary for Google
     creds_dict = {
@@ -47,10 +48,9 @@ st.title("🚀 Shree Balaji Decor: Live Dashboard")
 
 try:
     client = get_client()
-    # Your specific Google Sheet ID
     sheet = client.open_by_key("1Putj_rdvaHjokbSdT8ArjQbMDVnTDeHDNysj5avTOW4")
     
-    # Categories for the Sidebar
+    # Categories Sidebar
     categories = ["0.72 MM", "0.8 MM", "0.92 MM", "1 MM", "Door Skin 7x3.25", "Door Skin 8x4", "Acrylic Sheet"]
     selected_cat = st.sidebar.selectbox("📂 Select Category", categories)
     demand_filter = st.sidebar.slider("Show items sold exactly 'X' times:", 0, 20, 0)
@@ -58,7 +58,6 @@ try:
     ws = sheet.worksheet(selected_cat)
     df = pd.DataFrame(ws.get_all_records())
     
-    # Process the 'Quantity' column using your minus-sign logic
     df['Processed'] = df['Quantity'].apply(get_sales_info)
     df['Current Stock'] = df['Processed'].apply(lambda x: x[0])
     df['Times Sold'] = df['Processed'].apply(lambda x: x[1])
@@ -72,11 +71,11 @@ try:
             h_data = pd.DataFrame(h_ws.get_all_records())
             item_h = h_data[h_data.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)]
             st.table(item_h)
-        except: st.info("Check if 'Edit History' tab exists in your Google Sheet.")
+        except: st.info("Ensure an 'Edit History' tab exists in your Sheet.")
 
     st.subheader(f"📦 Inventory ({selected_cat})")
     final_df = df[df['Times Sold'] == demand_filter]
     st.dataframe(final_df[['Item', 'Current Stock', 'Times Sold']], use_container_width=True)
 
 except Exception as e:
-    st.error(f"Waiting for your Secret Key configuration... Details: {e}")
+    st.error(f"Configuration in progress... Details: {e}")
