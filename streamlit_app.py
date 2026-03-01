@@ -8,16 +8,15 @@ import json
 st.set_page_config(page_title="SBD Intelligence Dashboard", layout="wide")
 
 def get_client():
-    # 1. Read the secret from Streamlit
-    creds_info = st.secrets["GOOGLE_CREDENTIALS"]
+    # We create a COPY of the secrets so we can fix the key safely
+    creds_dict = {k: v for k, v in st.secrets["GOOGLE_CREDENTIALS"].items()}
     
-    # 2. THE MAGIC FIX: This line converts the text into a real key format
-    # It replaces the text '\n' with actual new lines that the computer needs.
-    if isinstance(creds_info["private_key"], str):
-        creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
+    # MAGIC FIX: Convert text '\n' into real new lines the computer needs
+    if "private_key" in creds_dict:
+        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
     
     scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    creds = Credentials.from_service_account_info(creds_info, scopes=scope)
+    creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
     return gspread.authorize(creds)
 
 def get_sales_info(raw_value):
@@ -48,19 +47,19 @@ try:
     df['Current Stock'] = df['Processed'].apply(lambda x: x[0])
     df['Times Sold'] = df['Processed'].apply(lambda x: x[1])
 
-    # Search Logic (Using your 'Logs' tab for history)
+    # Search Logic (Using your 'Edit History' tab)
     search_query = st.text_input("🔍 Type Design Code for History (e.g., PT 100)")
     if search_query:
         st.subheader(f"📜 History for {search_query}")
         try:
-            h_data = pd.DataFrame(sheet.worksheet("Logs").get_all_records())
-            item_h = h_data[h_data['Item'].astype(str).str.contains(search_query, case=False)]
+            h_data = pd.DataFrame(sheet.worksheet("Edit History").get_all_records())
+            item_h = h_data[h_data.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)]
             st.table(item_h)
-        except: st.info("Add a 'Logs' tab to see history.")
+        except: st.info("Check 'Edit History' tab name in Google Sheets.")
 
     st.subheader(f"📦 Inventory ({selected_cat})")
     final_df = df[df['Times Sold'] == demand_filter]
     st.dataframe(final_df[['Item', 'Current Stock', 'Times Sold']], use_container_width=True)
 
 except Exception as e:
-    st.error(f"Waiting for your Secret Key... Error: {e}")
+    st.error(f"Almost there! Error: {e}")
